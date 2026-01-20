@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我的雲端購物清單</title>
+<style>
+  body{font-family:sans-serif;padding:20px;background:#f5f5f5;max-width:800px;margin:0 auto;}
+  h1{color:#333;text-align:center;}
+  .category-label{padding:2px 6px;border-radius:4px;color:#fff;margin-right:8px;display:inline-block;font-size:0.8em;}
+  .食物{background:#4caf50;}
+  .藥妝{background:#2196f3;}
+  .store-section{margin-top:20px;padding:15px;background:#fff;border-radius:8px;box-shadow:0 2px 5px rgba(0,0,0,0.1);}
+  ul{list-style:none;padding:0;}
+  li{margin:10px 0;padding:15px;border:1px solid #ddd;border-radius:6px;background:#fafafa;position:relative;}
+  img{max-width:120px;display:block;margin-top:10px;border-radius:6px;cursor:pointer;border:1px solid #eee;}
+  .done{text-decoration:line-through;opacity:0.6;}
+  .controls{margin-bottom:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+  .add-form{border-top:2px solid #eee;padding-top:15px;margin-top:15px;}
+  .add-form input, .add-form select{margin:5px;padding:8px;border:1px solid #ccc;border-radius:4px;}
+  button{padding:8px 15px;cursor:pointer;border:none;border-radius:4px;background:#5c6bc0;color:white;}
+  button:hover{background:#3f51b5;}
+  .btn-del{background:#e57373;}
+  .btn-done{background:#81c784;}
+</style>
+</head>
+<body>
+
+<h1>🛒 雲端購物清單</h1>
+
+<div class="controls">
+  <select id="storeSelect"></select>
+  <input id="newStore" placeholder="新商店名稱">
+  <button onclick="addStore()">新增商店</button>
+</div>
+
+<div id="storeContainer"></div>
+
+<script>
+let stores = JSON.parse(localStorage.getItem('my_shopping_list') || '{}');
+
+function save() {
+    localStorage.setItem('my_shopping_list', JSON.stringify(stores));
+}
+
+function addStore() {
+    const name = document.getElementById('newStore').value.trim();
+    if (!name || stores[name]) return alert('商店名稱無效或已存在');
+    stores[name] = [];
+    save();
+    document.getElementById('newStore').value = '';
+    refreshStoreSelect();
+    document.getElementById('storeSelect').value = name;
+    refreshStore();
+}
+
+function refreshStoreSelect() {
+    const sel = document.getElementById('storeSelect');
+    sel.innerHTML = '';
+    Object.keys(stores).forEach(s => {
+        let o = document.createElement('option');
+        o.value = s; o.textContent = s;
+        sel.appendChild(o);
+    });
+}
+
+function refreshStore() {
+    const container = document.getElementById('storeContainer');
+    container.innerHTML = '';
+    const storeName = document.getElementById('storeSelect').value;
+    if (!storeName) return;
+
+    let section = document.createElement('div');
+    section.className = 'store-section';
+    
+    let ul = document.createElement('ul');
+    stores[storeName].forEach((i, idx) => {
+        let li = document.createElement('li');
+        if(i.done) li.className = 'done';
+        
+        li.innerHTML = `
+            <span class='category-label ${i.cat}'>${i.cat}</span>
+            <strong>${i.item}</strong> x ${i.qty} <span style="color:red">NT$${i.price}</span>
+            <p style="font-size:0.9em;color:#666;margin:5px 0;">${i.note || '無備註'}</p>
+            ${i.cat === '藥妝' ? `<div style="font-size:0.8em">💊 用量：${i.dosage || '-'} / 處方：${i.rx}</div>` : ''}
+        `;
+        
+        // 圖片處理：支援 Base64 或 網址
+        if (i.imgData) {
+            let img = document.createElement('img');
+            img.src = i.imgData;
+            img.onclick = () => window.open(i.imgData);
+            li.appendChild(img);
+        }
+
+        let btnBox = document.createElement('div');
+        btnBox.style.marginTop = '10px';
+        
+        let doneBtn = document.createElement('button');
+        doneBtn.className = 'btn-done';
+        doneBtn.textContent = i.done ? '取消完成' : '標記完成';
+        doneBtn.onclick = () => { i.done = !i.done; save(); refreshStore(); };
+        
+        let delBtn = document.createElement('button');
+        delBtn.className = 'btn-del';
+        delBtn.textContent = '刪除';
+        delBtn.style.marginLeft = '5px';
+        delBtn.onclick = () => { stores[storeName].splice(idx, 1); save(); refreshStore(); };
+        
+        btnBox.appendChild(doneBtn);
+        btnBox.appendChild(delBtn);
+        li.appendChild(btnBox);
+        ul.appendChild(li);
+    });
+
+    // 新增表單
+    let form = document.createElement('div');
+    form.className = 'add-form';
+    form.innerHTML = `
+        <h3>新增項目</h3>
+        <select id="inCat"><option value="食物">食物</option><option value="藥妝">藥妝</option></select>
+        <input id="inItem" placeholder="商品名稱">
+        <input id="inQty" placeholder="數量" style="width:50px">
+        <input id="inPrice" placeholder="價格" style="width:70px">
+        <input id="inNote" placeholder="備註">
+        <div id="pharmaOnly">
+            <input id="inDosage" placeholder="用量">
+            <select id="inRx"><option value="否">非處方</option><option value="是">處方</option></select>
+        </div>
+        <p style="font-size:0.8em; color:gray;">圖片：<input type="file" id="inImg" accept="image/*"></p>
+        <button onclick="addItem()">加入清單</button>
+    `;
+
+    section.appendChild(ul);
+    section.appendChild(form);
+    container.appendChild(section);
+}
+
+async function addItem() {
+    const storeName = document.getElementById('storeSelect').value;
+    const fileInput = document.getElementById('inImg');
+    let imgData = "";
+
+    // 將圖片轉為 Base64 字串存儲於 localStorage (注意：容量限制約 5MB)
+    if (fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        imgData = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(file);
+        });
+    }
+
+    const newItem = {
+        cat: document.getElementById('inCat').value,
+        item: document.getElementById('inItem').value,
+        qty: document.getElementById('inQty').value,
+        price: document.getElementById('inPrice').value,
+        note: document.getElementById('inNote').value,
+        dosage: document.getElementById('inDosage').value,
+        rx: document.getElementById('inRx').value,
+        imgData: imgData,
+        done: false
+    };
+
+    stores[storeName].push(newItem);
+    save();
+    refreshStore();
+}
+
+document.getElementById('storeSelect').onchange = refreshStore;
+refreshStoreSelect();
+if(Object.keys(stores).length > 0) {
+    document.getElementById('storeSelect').value = Object.keys(stores)[0];
+    refreshStore();
+}
+</script>
+</body>
+</html>
